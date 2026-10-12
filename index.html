@@ -430,7 +430,36 @@
         }
 
         // ============================================================
-        // 5. FUNGSI ANALISIS UTAMA
+        // 5. HELPER FUNCTIONS (BARU!)
+        // ============================================================
+        
+        // Deteksi NOTE 1 mengandung "AN PT" (fleksibel)
+        // Menerima: "AN PT", "A.N PT", "A/N PT", "AN.PT", "A N PT", dll.
+        function noteMengandungANPT(text) {
+            if (!text) return false;
+            // Normalisasi: hapus titik, slash, spasi → cari pola "ANPT"
+            const normalized = String(text).toUpperCase().replace(/[.\/\s]/g, '');
+            return normalized.includes('ANPT');
+        }
+
+        // Deteksi nama mengandung "PT" di AWAL KATA (bukan di tengah)
+        // Valid: "PT ABC", "PT. ABC", "PT ABC DEF"
+        // Tidak valid: "SUPRAPTO" (PT di tengah kata)
+        function namaMengandungPT(text) {
+            if (!text) return false;
+            const upper = String(text).toUpperCase().trim();
+            return /^PT[\s.]/.test(upper) || upper === 'PT';
+        }
+
+        // Cek apakah nama kosong / ada isinya
+        function isNamaKosong(nama) {
+            if (!nama) return true;
+            const clean = String(nama).trim();
+            return clean === '' || clean === '-' || clean === '0';
+        }
+
+        // ============================================================
+        // 6. FUNGSI ANALISIS UTAMA
         // ============================================================
         function analyzeRow(row) {
             const merk = String(row['MERK'] || '').trim();
@@ -514,28 +543,38 @@
             else { namaSama = false; }
 
             // ============================================================
-            // 4. CEK NOTE 1 "AN PT" (CROSS-CHECK 2 ARAH)
+            // 4. CEK NOTE 1 "AN PT" (CROSS-CHECK 2 ARAH) - DIPERBAIKI
             // ============================================================
             let anPTNote = false;
             let anPTValid = true;
             let anPTKeterangan = '';
 
-            // Deteksi apakah nama STNK/BPKB mengandung "PT"
-            const stnkPT = namaSTNK.toUpperCase().includes('PT');
-            const bpkbPT = namaBPKB.toUpperCase().includes('PT');
+            // Deteksi PT di nama (hanya di AWAL KATA, bukan di tengah)
+            const stnkPT = namaMengandungPT(namaSTNK);
+            const bpkbPT = namaMengandungPT(namaBPKB);
             const adaNamaPT = stnkPT || bpkbPT;
 
-            // Deteksi apakah NOTE 1 mengandung "AN PT"
-            if (note1.toUpperCase().includes('AN PT')) {
+            // Deteksi apakah nama sama sekali kosong
+            const stnkKosong = isNamaKosong(namaSTNK);
+            const bpkbKosong = isNamaKosong(namaBPKB);
+            const semuaNamaKosong = stnkKosong && bpkbKosong;
+
+            // Deteksi NOTE 1 dengan fleksibel (AN PT, A.N PT, A/N PT, dll)
+            if (noteMengandungANPT(note1)) {
                 anPTNote = true;
             }
 
-            // ---- KASUS 1: NOTE ada "AN PT" tapi nama BUKAN PT ----
-            if (anPTNote && !adaNamaPT) {
+            // ---- KASUS 0: NOTE ada AN PT + NAMA KOSONG → TETAP VALID ✅ ----
+            if (anPTNote && semuaNamaKosong) {
+                anPTValid = true;
+                anPTKeterangan = '✅ PT (nama kosong, tertera di note)';
+            }
+            // ---- KASUS 1: NOTE ada AN PT tapi nama ADA dan BUKAN PT ----
+            else if (anPTNote && !adaNamaPT && !semuaNamaKosong) {
                 anPTValid = false;
                 anPTKeterangan = '❌ Note AN PT, nama bukan PT';
             }
-            // ---- KASUS 2: Nama PT tapi NOTE tidak ada "AN PT" ----
+            // ---- KASUS 2: Nama PT tapi NOTE tidak ada AN PT ----
             else if (!anPTNote && adaNamaPT) {
                 anPTValid = false;
                 anPTKeterangan = '⚠️ Nama PT, note tidak ada AN PT';
@@ -603,6 +642,7 @@
                 tahunRangka, kodeTahunVIN, statusVIN, mappingVIN, tahunValid, tahunMismatch,
                 namaSama, namaKosong, 
                 anPTNote, anPTValid, anPTKeterangan, stnkPT, bpkbPT, adaNamaPT,
+                semuaNamaKosong, // <-- field baru
                 sellerKB, sellerKBValid, sellerKBDisplay,
                 anomali,
                 ccExcel, ccModel, ccStatus, ccSelisih, ccDisplay, ccSumber,
@@ -611,7 +651,7 @@
         }
 
         // ============================================================
-        // 6. PROSES EXCEL
+        // 7. PROSES EXCEL
         // ============================================================
         function processExcelData(jsonData) {
             if (!jsonData || jsonData.length < 2) {
@@ -645,7 +685,7 @@
         }
 
         // ============================================================
-        // 7. FILTER & SORTING
+        // 8. FILTER & SORTING
         // ============================================================
         function applyFilters() {
             const q = searchInput.value.toLowerCase().trim();
@@ -773,7 +813,7 @@
         }
 
         // ============================================================
-        // 8. RENDER TABLE
+        // 9. RENDER TABLE
         // ============================================================
         function renderTable() {
             const total = filteredData.length;
@@ -854,13 +894,16 @@
                 // ---- Badge AN PT (Cross-Check 2 Arah) ----
                 let anPTBadge;
                 if (!d.anPTValid && d.anPTKeterangan && d.anPTKeterangan !== '—') {
-                    // Ada masalah (salah satu arah tidak konsisten)
+                    // ❌ atau ⚠️ = Anomali
                     anPTBadge = `<span class="badge badge-danger" title="${escapeHtml(d.anPTKeterangan)}">${escapeHtml(d.anPTKeterangan)}</span>`;
                 } else if (d.anPTNote && d.adaNamaPT) {
-                    // Konsisten: keduanya PT
+                    // ✅ PT konsisten (keduanya ada)
                     anPTBadge = '<span class="badge badge-pt">🏢 PT ✓</span>';
+                } else if (d.anPTNote && d.semuaNamaKosong) {
+                    // ✅ Note AN PT + nama kosong → tetap valid
+                    anPTBadge = '<span class="badge badge-pt">🏢 PT (note)</span>';
                 } else {
-                    // Normal: tidak ada PT
+                    // Tidak ada PT sama sekali
                     anPTBadge = '<span class="badge badge-secondary">—</span>';
                 }
 
@@ -924,7 +967,7 @@
         }
 
         // ============================================================
-        // 9. EVENT LISTENERS
+        // 10. EVENT LISTENERS
         // ============================================================
         tableBody.addEventListener('change', function(e) {
             if (e.target.classList.contains('checklist-cb')) {
