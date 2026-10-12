@@ -96,7 +96,7 @@
         }
         .table-scroll { overflow-x: auto; overflow-y: visible; max-height: none; }
         table {
-            width: 100%; border-collapse: collapse; font-size: 0.73rem; min-width: 1900px;
+            width: 100%; border-collapse: collapse; font-size: 0.73rem; min-width: 1800px;
         }
         th {
             background: #f1f5f9; text-align: left; padding: 10px 8px;
@@ -194,7 +194,7 @@
     <div class="container">
         <h1>📊 Analisis Data Lelang Motor</h1>
         <div class="subtitle">
-            <b>CC</b>: CC Excel vs Model · <b>Tahun Rangka</b>: VIN vs Tahun · <b>Nama STNK vs BPKB</b> · <b>Note AN PT</b> · <b>Seller KB → Faktur "Tdk"</b>
+            <b>CC</b>: Excel vs Model · <b>Tahun Rangka</b>: VIN vs Tahun · <b>Nama STNK vs BPKB</b> · <b>Note AN PT ⇄ Nama PT</b> (cross-check 2 arah) · <b>Seller KB → Faktur "Tdk"</b>
             <span class="filter-info">🏍️ Hanya unit Motor</span>
             <span class="filter-info" style="background:#dcfce7; color:#166534; margin-left:8px;">✅ Checklist tersimpan otomatis di browser</span>
         </div>
@@ -250,8 +250,7 @@
                             <th data-sort="lot">LOT <span class="sort-indicator">↕</span></th>
                             <th data-sort="nopol">No. Polisi <span class="sort-indicator">↕</span></th>
                             <th data-sort="merk">Merk <span class="sort-indicator">↕</span></th>
-                            <th data-sort="modelDok">Model Dokumen <span class="sort-indicator">↕</span></th>
-                            <th data-sort="modelFisik">Model Fisik <span class="sort-indicator">↕</span></th>
+                            <th data-sort="model">MODEL <span class="sort-indicator">↕</span></th>
                             <th data-sort="ccInfo">CC <span class="sort-indicator">↕</span></th>
                             <th data-sort="tahun">Tahun <span class="sort-indicator">↕</span></th>
                             <th data-sort="tahunRangka">Tahun Rangka <span class="sort-indicator">↕</span></th>
@@ -265,7 +264,7 @@
                     </thead>
                     <tbody id="tableBody">
                         <tr>
-                            <td colspan="15" class="empty-state">
+                            <td colspan="14" class="empty-state">
                                 <span class="icon">📂</span>
                                 Upload file Excel untuk memulai analisis
                             </td>
@@ -435,8 +434,7 @@
         // ============================================================
         function analyzeRow(row) {
             const merk = String(row['MERK'] || '').trim();
-            const modelDok = String(row['MODEL DOKUMEN'] || '').trim();
-            const modelFisik = String(row['MODEL FISIK'] || '').trim();
+            const model = String(row['MODEL'] || row['MODEL DOKUMEN'] || row['MODEL FISIK'] || '').trim();
             const tahun = row['TAHUN'] ? parseInt(row['TAHUN']) : null;
             const noRangka = String(row['NO.RANGKA'] || '').trim();
             const nopol = String(row['NO POL'] || row['NO POLISI'] || '').trim();
@@ -445,7 +443,7 @@
             const note1 = String(row['NOTE 1'] || '').trim();
             const lot = String(row['LOT'] || '').trim();
             const sellerType = String(row['TYPE SELLER'] || '').trim();
-            const faktur = String(row['FAKTUR'] || '').trim(); // Kolom FAKTUR
+            const faktur = String(row['FAKTUR'] || '').trim();
 
             // ============================================================
             // 1. CEK CC vs MODEL
@@ -458,44 +456,32 @@
                     ccExcel = parsed;
                 }
             }
-            const ccFisik = extractCC(modelFisik);
-            const ccDok = extractCC(modelDok);
+            const ccModel = extractCC(model);
 
             let ccStatus = 'unknown';
             let ccSelisih = null;
             let ccDisplay = '—';
             let ccSumber = '';
 
-            if (ccExcel !== null && ccFisik !== null) {
-                ccSelisih = Math.abs(ccExcel - ccFisik);
-                if (ccExcel === 0 || ccFisik === 0) {
+            if (ccExcel !== null && ccModel !== null) {
+                ccSelisih = Math.abs(ccExcel - ccModel);
+                if (ccExcel === 0 || ccModel === 0) {
                     ccStatus = 'partial';
-                    ccDisplay = ccExcel === 0 ? `0 vs ${ccFisik}cc` : `${ccFisik} vs 0cc`;
+                    ccDisplay = ccExcel === 0 ? `0 vs ${ccModel}cc` : `${ccModel} vs 0cc`;
                     ccSumber = 'Ada nilai 0';
                 } else if (ccSelisih <= 100) {
                     ccStatus = 'sama';
-                    ccDisplay = `${ccFisik}cc`;
-                    ccSumber = 'Excel vs Fisik';
+                    ccDisplay = `${ccModel}cc`;
+                    ccSumber = 'Excel vs Model';
                 } else {
                     ccStatus = 'beda';
-                    ccDisplay = `${ccExcel}≠${ccFisik}cc`;
-                    ccSumber = 'Excel vs Fisik';
+                    ccDisplay = `${ccExcel}≠${ccModel}cc`;
+                    ccSumber = 'Excel vs Model';
                 }
-            } else if (ccExcel !== null && ccDok !== null) {
-                 ccSelisih = Math.abs(ccExcel - ccDok);
-                 if (ccSelisih <= 100) {
-                    ccStatus = 'sama';
-                    ccDisplay = `${ccDok}cc`;
-                    ccSumber = 'Excel vs Dokumen';
-                } else {
-                    ccStatus = 'beda';
-                    ccDisplay = `${ccExcel}≠${ccDok}cc`;
-                    ccSumber = 'Excel vs Dokumen';
-                }
-            } else if (ccFisik !== null) {
+            } else if (ccModel !== null) {
                 ccStatus = 'partial';
-                ccDisplay = `${ccFisik}cc`;
-                ccSumber = 'Hanya Fisik';
+                ccDisplay = `${ccModel}cc`;
+                ccSumber = 'Hanya Model';
             } else if (ccExcel !== null) {
                 ccStatus = 'partial';
                 ccDisplay = `${ccExcel}cc`;
@@ -528,19 +514,42 @@
             else { namaSama = false; }
 
             // ============================================================
-            // 4. CEK NOTE 1 "AN PT"
+            // 4. CEK NOTE 1 "AN PT" (CROSS-CHECK 2 ARAH)
             // ============================================================
             let anPTNote = false;
             let anPTValid = true;
+            let anPTKeterangan = '';
+
+            // Deteksi apakah nama STNK/BPKB mengandung "PT"
+            const stnkPT = namaSTNK.toUpperCase().includes('PT');
+            const bpkbPT = namaBPKB.toUpperCase().includes('PT');
+            const adaNamaPT = stnkPT || bpkbPT;
+
+            // Deteksi apakah NOTE 1 mengandung "AN PT"
             if (note1.toUpperCase().includes('AN PT')) {
                 anPTNote = true;
-                const stnkPT = namaSTNK.toUpperCase().startsWith('PT');
-                const bpkbPT = namaBPKB.toUpperCase().startsWith('PT');
-                if (!stnkPT && !bpkbPT) {
-                    anPTValid = false;
-                }
             }
-            const anPTBadgeDisplay = anPTNote ? (anPTValid ? '✅ PT' : '❌ Bukan PT') : '—';
+
+            // ---- KASUS 1: NOTE ada "AN PT" tapi nama BUKAN PT ----
+            if (anPTNote && !adaNamaPT) {
+                anPTValid = false;
+                anPTKeterangan = '❌ Note AN PT, nama bukan PT';
+            }
+            // ---- KASUS 2: Nama PT tapi NOTE tidak ada "AN PT" ----
+            else if (!anPTNote && adaNamaPT) {
+                anPTValid = false;
+                anPTKeterangan = '⚠️ Nama PT, note tidak ada AN PT';
+            }
+            // ---- KASUS 3: Keduanya ada (konsisten) ----
+            else if (anPTNote && adaNamaPT) {
+                anPTValid = true;
+                anPTKeterangan = '✅ PT konsisten';
+            }
+            // ---- KASUS 4: Keduanya tidak ada (normal) ----
+            else {
+                anPTValid = true;
+                anPTKeterangan = '—';
+            }
 
             // ============================================================
             // 5. CEK SELLER KB → FAKTUR HARUS "Tdk"
@@ -551,7 +560,6 @@
             
             if (sellerType.toUpperCase().includes('KB')) {
                 sellerKB = true;
-                // Cek apakah kolom FAKTUR berisi "Tdk" (case-insensitive) atau kosong
                 const fakturUpper = faktur.toUpperCase().trim();
                 const fakturIsTdk = fakturUpper === 'TDK' || fakturUpper === 'TIDAK' || fakturUpper === '';
                 
@@ -581,9 +589,9 @@
                 anomali = true;
                 reasons.push('Nama STNK ≠ BPKB');
             }
-            if (anPTNote && !anPTValid) {
+            if (!anPTValid && anPTKeterangan && anPTKeterangan !== '—') {
                 anomali = true;
-                reasons.push('Note "AN PT" tapi nama bukan PT');
+                reasons.push(anPTKeterangan);
             }
             if (sellerKB && !sellerKBValid) {
                 anomali = true;
@@ -591,12 +599,13 @@
             }
 
             return {
-                lot, merk, modelDok, modelFisik, tahun, noRangka, nopol, namaSTNK, namaBPKB, note1, sellerType, faktur,
+                lot, merk, model, tahun, noRangka, nopol, namaSTNK, namaBPKB, note1, sellerType, faktur,
                 tahunRangka, kodeTahunVIN, statusVIN, mappingVIN, tahunValid, tahunMismatch,
-                namaSama, namaKosong, anPTNote, anPTValid, anPTBadgeDisplay,
+                namaSama, namaKosong, 
+                anPTNote, anPTValid, anPTKeterangan, stnkPT, bpkbPT, adaNamaPT,
                 sellerKB, sellerKBValid, sellerKBDisplay,
                 anomali,
-                ccExcel, ccFisik, ccStatus, ccSelisih, ccDisplay, ccSumber,
+                ccExcel, ccModel, ccStatus, ccSelisih, ccDisplay, ccSumber,
                 reasons: reasons.join('; ')
             };
         }
@@ -650,7 +659,7 @@
                 if (check === 'unchecked' && checkedList[d.nopol]) return false;
 
                 if (q) {
-                    const hay = `${d.merk} ${d.modelDok} ${d.modelFisik} ${d.namaSTNK} ${d.namaBPKB} ${d.nopol} ${d.noRangka} ${d.note1} ${d.lot} ${d.faktur}`.toLowerCase();
+                    const hay = `${d.merk} ${d.model} ${d.namaSTNK} ${d.namaBPKB} ${d.nopol} ${d.noRangka} ${d.note1} ${d.lot} ${d.faktur}`.toLowerCase();
                     if (!hay.includes(q)) return false;
                 }
                 if (nopolQ) {
@@ -710,8 +719,9 @@
                     if (item.namaSama && !item.namaKosong) return 1;
                     return 0;
                 case 'anPT':
-                    if (item.anPTNote && !item.anPTValid) return 2;
-                    if (item.anPTNote && item.anPTValid) return 1;
+                    // Prioritas: yang bermasalah (tidak valid) di atas
+                    if (!item.anPTValid && item.anPTKeterangan && item.anPTKeterangan !== '—') return 2;
+                    if (item.anPTNote && item.adaNamaPT) return 1;
                     return 0;
                 case 'sellerKB':
                     if (item.sellerKB && !item.sellerKBValid) return 2;
@@ -745,8 +755,7 @@
                     case 'lot': va = a.lot || ''; vb = b.lot || ''; break;
                     case 'nopol': va = a.nopol || ''; vb = b.nopol || ''; break;
                     case 'merk': va = a.merk || ''; vb = b.merk || ''; break;
-                    case 'modelDok': va = a.modelDok || ''; vb = b.modelDok || ''; break;
-                    case 'modelFisik': va = a.modelFisik || ''; vb = b.modelFisik || ''; break;
+                    case 'model': va = a.model || ''; vb = b.model || ''; break;
                     case 'tahun': va = a.tahun || 0; vb = b.tahun || 0; break;
                     case 'namaSTNK': va = a.namaSTNK || ''; vb = b.namaSTNK || ''; break;
                     case 'namaBPKB': va = a.namaBPKB || ''; vb = b.namaBPKB || ''; break;
@@ -776,7 +785,7 @@
             const checkedList = getCheckedList();
 
             if (total === 0) {
-                tableBody.innerHTML = `<tr><td colspan="15" class="empty-state">
+                tableBody.innerHTML = `<tr><td colspan="14" class="empty-state">
                     <span class="icon">🔍</span>Tidak ada data yang cocok dengan filter.
                 </td></tr>`;
                 pageInfo.textContent = 'Halaman 0 dari 0';
@@ -816,9 +825,9 @@
                 let ccHtml;
                 if (d.ccStatus === 'sama') {
                     const selisihInfo = d.ccSelisih > 0 ? ` (Δ${d.ccSelisih})` : '';
-                    ccHtml = `<span class="badge badge-cc" title="Excel: ${d.ccExcel}cc | Fisik: ${d.ccFisik}cc">✅ ${d.ccDisplay}${selisihInfo}</span>`;
+                    ccHtml = `<span class="badge badge-cc" title="Excel: ${d.ccExcel}cc | Model: ${d.ccModel}cc">✅ ${d.ccDisplay}${selisihInfo}</span>`;
                 } else if (d.ccStatus === 'beda') {
-                    ccHtml = `<span class="badge badge-danger" title="Excel: ${d.ccExcel}cc | Fisik: ${d.ccFisik}cc">❌ ${d.ccDisplay}</span>`;
+                    ccHtml = `<span class="badge badge-danger" title="Excel: ${d.ccExcel}cc | Model: ${d.ccModel}cc">❌ ${d.ccDisplay}</span>`;
                 } else if (d.ccStatus === 'partial') {
                     ccHtml = `<span class="badge badge-warning" title="${d.ccSumber}">⚠️ ${d.ccDisplay}</span>`;
                 } else {
@@ -842,14 +851,17 @@
                         ? '<span class="badge badge-success">✅ Sama</span>'
                         : '<span class="badge badge-danger">❌ Beda</span>');
 
-                // ---- Badge AN PT ----
+                // ---- Badge AN PT (Cross-Check 2 Arah) ----
                 let anPTBadge;
-                if (!d.anPTNote) {
-                    anPTBadge = '<span class="badge badge-secondary">—</span>';
-                } else if (d.anPTValid) {
-                    anPTBadge = '<span class="badge badge-pt">🏢 PT</span>';
+                if (!d.anPTValid && d.anPTKeterangan && d.anPTKeterangan !== '—') {
+                    // Ada masalah (salah satu arah tidak konsisten)
+                    anPTBadge = `<span class="badge badge-danger" title="${escapeHtml(d.anPTKeterangan)}">${escapeHtml(d.anPTKeterangan)}</span>`;
+                } else if (d.anPTNote && d.adaNamaPT) {
+                    // Konsisten: keduanya PT
+                    anPTBadge = '<span class="badge badge-pt">🏢 PT ✓</span>';
                 } else {
-                    anPTBadge = '<span class="badge badge-danger">❌ Bukan PT</span>';
+                    // Normal: tidak ada PT
+                    anPTBadge = '<span class="badge badge-secondary">—</span>';
                 }
 
                 // ---- Badge Seller KB ----
@@ -869,8 +881,7 @@
                     <td>${escapeHtml(d.lot) || '-'}</td>
                     <td>${nopolDisplay}${priorityLabel}</td>
                     <td>${escapeHtml(d.merk) || '-'}</td>
-                    <td>${escapeHtml(d.modelDok) || '-'}</td>
-                    <td>${escapeHtml(d.modelFisik) || '-'}</td>
+                    <td>${escapeHtml(d.model) || '-'}</td>
                     <td>${ccHtml}</td>
                     <td>${d.tahun || '-'}</td>
                     <td>${tahunRangkaHtml}</td>
